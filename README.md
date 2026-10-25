@@ -164,15 +164,3 @@ build.sh     сборка
 ./build.sh                 # → dist/Bogestv0-VPN-Setup.exe
 # положите xray.zip (Xray-windows-64.zip) рядом — тогда xray вшивается в установщик
 ```
-
-**Выпуск релиза.** Создайте и отправьте тег — GitHub Actions соберёт установщик и выложит его в Releases:
-```bash
-git tag v1.1.0
-git push origin v1.1.0
-```
-
-**Chrome Web Store / Edge Add-ons.** После публикации расширения в магазине задайте переменную репозитория `STORE_IDS` (Settings → Secrets and variables → Actions → Variables) с ID из магазина (через запятую, если несколько). Установщик перестанет просить «Режим разработчика», а пользователи будут ставить расширение из магазина в один клик.
-
-> ID распакованного расширения фиксирован (`cfilndkhacojgcfnepiiljkpaikemkgc`) благодаря полю `key` в `manifest.json`. Менять `key` нельзя — иначе помощник перестанет принимать расширение.
-
-Только Windows + Chromium-браузеры. Firefox не поддерживается (другой API прокси).
