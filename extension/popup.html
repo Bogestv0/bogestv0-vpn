@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Bogestv0 VPN</title>
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+<div class="app" id="app" data-state="off">
+
+  <header class="top">
+    <span class="brand">Bogestv0 <b>VPN</b></span>
+    <button class="chip" id="chipServer" title="Текущий сервер"><span class="dot"></span><span id="chipText">нет сервера</span></button>
+  </header>
+
+  <!-- ГЛАВНАЯ -->
+  <main class="view" id="view-home">
+    <div class="globe-wrap">
+      <svg class="globe" viewBox="0 0 200 200" aria-hidden="true">
+        <defs>
+          <radialGradient id="sea" cx="35%" cy="30%" r="80%">
+            <stop offset="0" stop-color="var(--sea1)"/><stop offset="1" stop-color="var(--sea2)"/>
+          </radialGradient>
+          <radialGradient id="shade" cx="35%" cy="30%" r="75%">
+            <stop offset="0.55" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".62"/>
+          </radialGradient>
+          <clipPath id="clip"><circle cx="100" cy="100" r="92"/></clipPath>
+          <g id="land">
+            <path d="M18 62c10-12 26-14 38-8 8 4 6 14 14 18 10 5 22 2 24 14 2 12-12 14-14 26-2 10 4 20-4 28-8 8-16-2-20-12-6-14-8-22-18-30-10-8-26-12-20-36z"/>
+            <path d="M104 40c14-8 30-6 42 2 10 7 8 18 20 22 8 3 14 10 8 18-8 10-20 4-28 10-8 6-6 18-18 18-12 0-8-16-18-22-8-5-18-4-18-16 0-12 4-24 12-32z"/>
+            <path d="M120 128c8-4 18 0 20 10 2 10-8 22-14 24-8 2-12-8-12-16 0-8 0-14 6-18z"/>
+            <path d="M68 150c6-3 12 2 10 8-2 6-10 8-14 4-3-4 0-10 4-12z"/>
+          </g>
+        </defs>
+        <g clip-path="url(#clip)">
+          <circle cx="100" cy="100" r="92" fill="url(#sea)"/>
+          <g class="land-spin" fill="var(--land)">
+            <use href="#land"/><use href="#land" x="200"/><use href="#land" x="400"/>
+          </g>
+          <circle cx="100" cy="100" r="92" fill="url(#shade)"/>
+        </g>
+        <circle class="rim" cx="100" cy="100" r="92" fill="none" stroke="var(--rim)" stroke-width="1.5"/>
+      </svg>
+    </div>
+
+    <h1 id="title">Защита отключена</h1>
+    <p class="sub" id="sub">Соединение не шифруется.<br>Ваш IP и местоположение доступны третьим лицам.</p>
+
+    <button class="link" id="addRule" hidden><span class="plus">+</span> Добавить отдельное VPN правило для <b id="ruleHost">…</b></button>
+
+    <div class="err" id="err" hidden></div>
+
+    <button class="cta" id="cta">Включить VPN</button>
+  </main>
+
+  <!-- СЕРВЕРЫ -->
+  <main class="view" id="view-servers" hidden>
+    <h2>Серверы</h2>
+    <label class="lbl" for="linkInput">Вставьте ссылку vless://</label>
+    <textarea id="linkInput" rows="3" spellcheck="false" placeholder="vless://uuid@host:443?security=reality&…"></textarea>
+    <div class="row">
+      <button class="btn" id="btnAdd">Добавить</button>
+      <button class="btn ghost" id="btnPaste" title="Вставить из буфера">Из буфера</button>
+    </div>
+    <div class="err" id="addErr" hidden></div>
+    <ul class="list" id="servers"></ul>
+    <p class="empty" id="serversEmpty">Пока нет ни одного сервера.</p>
+  </main>
+
+  <!-- НАСТРОЙКИ -->
+  <main class="view" id="view-settings" hidden>
+    <h2>Настройки</h2>
+
+    <div class="field">
+      <span class="lbl">Режим</span>
+      <div class="seg" id="modeSeg">
+        <button data-mode="all">Весь трафик</button>
+        <button data-mode="list">Только сайты из списка</button>
+      </div>
+    </div>
+
+    <div class="field" id="sitesField">
+      <label class="lbl" for="siteInput">Сайты через VPN</label>
+      <div class="row">
+        <input id="siteInput" type="text" placeholder="например, github.com" spellcheck="false">
+        <button class="btn" id="siteAdd">+</button>
+      </div>
+      <ul class="tags" id="sites"></ul>
+    </div>
+
+    <div class="field">
+      <label class="lbl" for="portInput">Локальный порт SOCKS5</label>
+      <input id="portInput" type="number" min="1024" max="65535">
+    </div>
+
+    <div class="field">
+      <span class="lbl">Помощник (xray-core)</span>
+      <div class="helper" id="helper"><span class="dot"></span><span id="helperText">проверяю…</span></div>
+    </div>
+  </main>
+
+  <nav class="bar">
+    <button class="nav active" data-view="home" title="Главная">
+      <svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>
+    </button>
+    <button class="nav" data-view="servers" title="Серверы">
+      <svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="2.4"/><circle cx="18" cy="6" r="2.4"/><circle cx="18" cy="18" r="2.4"/><path d="M8.2 11l7.6-4M8.2 13l7.6 4"/></svg>
+    </button>
+    <button class="nav" data-view="settings" title="Настройки">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button>
+    <span class="grow"></span>
+    <label class="switch" title="Включить / выключить">
+      <input type="checkbox" id="power"><span class="knob"></span>
+      <span class="sw-text" id="swText">ВЫКЛ</span>
+    </label>
+  </nav>
+</div>
+<script src="lib/vless.js"></script>
+<script src="popup.js"></script>
+</body>
+</html>
