@@ -24,7 +24,7 @@ jobs:
       - name: Build installer
         env:
           STORE_IDS: ${{ vars.STORE_IDS }}
-        run: ./build.sh
+           run: bash build.sh
 
       - name: Checksum
         run: cd dist && sha256sum Bogestv0-VPN-Setup.exe > SHA256SUMS.txt && cat SHA256SUMS.txt
