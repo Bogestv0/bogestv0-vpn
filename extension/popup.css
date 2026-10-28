@@ -81,3 +81,30 @@ textarea{font:12px/1.35 ui-monospace,Consolas,monospace}
 .switch input:checked+.knob{background:var(--green)}
 .switch input:checked+.knob::after{left:18px}
 .sw-text{width:34px;font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.5px}
+
+/* IP / пинг */
+.net{display:flex;align-items:stretch;gap:6px;width:100%;margin:0 0 12px}
+.net>div{flex:1;min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 8px;text-align:left}
+.net span{display:block;color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em}
+.net b{display:block;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.net b.good{color:var(--green2)}.net b.mid{color:#d9b84a}.net b.bad{color:var(--red)}
+.net button{background:var(--panel);border:1px solid var(--line);border-radius:8px;color:var(--muted);width:32px;font-size:16px}
+.net button:hover{color:var(--text)}
+/* баннер обновления */
+.upd{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 10px;padding:8px 10px;border-radius:8px;background:rgba(79,184,92,.12);border:1px solid rgba(79,184,92,.4);font-size:12.5px;text-align:left}
+.upd[hidden]{display:none}.upd small{display:block;color:var(--muted);font-size:11.5px}
+.upd .row{flex:none}
+/* DNS и версия */
+.hint{color:var(--muted);font-size:12px;margin:2px 0 8px;line-height:1.4}
+.dnsState{font-size:12px;color:var(--muted);margin-top:6px}.dnsState.ok{color:var(--green2)}
+.ver{color:var(--muted);font-size:12.5px;flex:1}
+/* компактная компоновка главного экрана */
+.globe-wrap{width:116px;height:116px;margin:2px 0 10px}
+h1{font-size:21px;margin-bottom:6px}
+.sub{margin-bottom:10px;font-size:12.5px}
+.upd{margin:8px 14px 0;padding:6px 8px 6px 10px;gap:6px}
+.upd>div:first-child{min-width:0;flex:1}
+.upd b{display:block;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.upd small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.upd .btn{padding:5px 9px;font-size:12px;white-space:nowrap}
+.upd .row{width:auto;flex:none}

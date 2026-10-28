@@ -13,6 +13,11 @@
     <button class="chip" id="chipServer" title="Текущий сервер"><span class="dot"></span><span id="chipText">нет сервера</span></button>
   </header>
 
+  <div class="upd" id="upd" hidden>
+    <div><b id="updTitle">Доступно обновление</b><small id="updText"></small></div>
+    <div class="row"><button class="btn" id="updGo">Обновить</button><button class="btn ghost" id="updSkip" title="Не напоминать об этой версии">Позже</button></div>
+  </div>
+
   <!-- ГЛАВНАЯ -->
   <main class="view" id="view-home">
     <div class="globe-wrap">
@@ -45,6 +50,13 @@
 
     <h1 id="title">Защита отключена</h1>
     <p class="sub" id="sub">Соединение не шифруется.<br>Ваш IP и местоположение доступны третьим лицам.</p>
+
+    <div class="net" id="net">
+      <div><span>IP</span><b id="ip4" title="">…</b></div>
+      <div><span>IPv6</span><b id="ip6" title="">…</b></div>
+      <div><span>Пинг</span><b id="pingV">…</b></div>
+      <button id="netRefresh" title="Обновить IP и пинг">↻</button>
+    </div>
 
     <button class="link" id="addRule" hidden><span class="plus">+</span> Добавить отдельное VPN правило для <b id="ruleHost">…</b></button>
 
@@ -94,8 +106,21 @@
     </div>
 
     <div class="field">
+      <span class="lbl">Не открываются сайты? Исправить DNS</span>
+      <p class="hint">Провайдер блокирует или подменяет ответы DNS — обход пакетов тут не поможет, пока DNS не заменён. Нажмите кнопку: программа поставит DNS Cloudflare и Google (1.1.1.1 / 8.8.8.8). Вернуть можно в любой момент. Windows попросит подтверждение.</p>
+      <div class="row"><button class="btn" id="dnsFix">Исправить DNS</button><button class="btn ghost" id="dnsRestore" hidden>Вернуть как было</button></div>
+      <div class="dnsState" id="dnsState"></div>
+      <div class="err" id="dnsErr" hidden></div>
+    </div>
+
+    <div class="field">
       <span class="lbl">Помощник (xray-core)</span>
       <div class="helper" id="helper"><span class="dot"></span><span id="helperText">проверяю…</span></div>
+    </div>
+
+    <div class="field">
+      <span class="lbl">Версия</span>
+      <div class="row"><span class="ver" id="verText"></span><button class="btn ghost" id="updCheck">Проверить обновления</button></div>
     </div>
   </main>
 

@@ -84,6 +84,7 @@ async function toggle() {
       : (r.error || 'Не удалось подключиться'));
   }
   render();
+  loadNet();
 }
 
 async function addLink(raw) {
@@ -117,11 +118,86 @@ async function addSite(raw) {
   render();
 }
 
+/* ---------- IP, пинг ---------- */
+async function ipOf(url) {
+  const c = new AbortController(); const t = setTimeout(() => c.abort(), 5000);
+  try { const r = await fetch(url, { cache: 'no-store', signal: c.signal }); const j = await r.json(); return /^[0-9a-f:.]{3,45}$/i.test(j.ip || '') ? j.ip : null; }
+  catch (e) { return null; } finally { clearTimeout(t); }
+}
+let netBusy = false;
+function setNet(id, text, cls) { const e = $(id); e.textContent = text; e.title = text; e.className = cls || ''; }
+async function loadNet() {
+  if (netBusy) return; netBusy = true;
+  ['#ip4', '#ip6', '#pingV'].forEach((i) => setNet(i, '…'));
+  const a = active();
+  const [v4, v6, pg] = await Promise.all([
+    ipOf('https://api.ipify.org?format=json'), ipOf('https://api6.ipify.org?format=json'),
+    a ? send({ type: 'tcping', host: a.parsed.host, port: a.parsed.port }) : Promise.resolve(null)
+  ]);
+  setNet('#ip4', v4 || 'нет'); setNet('#ip6', v6 || 'нет');
+  if (!a) setNet('#pingV', '—');
+  else if (pg && pg.ok) setNet('#pingV', pg.ms + ' мс', pg.ms < 100 ? 'good' : pg.ms < 250 ? 'mid' : 'bad');
+  else if (pg && pg.hostMissing) setNet('#pingV', 'нет помощника');
+  else setNet('#pingV', 'нет ответа', 'bad');
+  netBusy = false;
+}
+
+/* ---------- обновления ---------- */
+let updInfo = null;
+async function loadUpdate(force) {
+  const u = await send({ type: 'update', force: !!force });
+  updInfo = u; $('#verText').textContent = 'v' + (u && u.current || '');
+  const box = $('#upd');
+  if (u && u.available) {
+    $('#updTitle').textContent = 'Доступна версия ' + u.latest;
+    $('#updText').textContent = 'У вас ' + u.current + '. Хотите обновить?';
+    box.hidden = false;
+  } else box.hidden = true;
+  return u;
+}
+$('#updGo').addEventListener('click', () => {
+  if (!updInfo || !/^https:\/\/(github\.com|objects\.githubusercontent\.com)\//.test(updInfo.url || '')) return;
+  chrome.tabs.create({ url: updInfo.url });
+  $('#updText').textContent = 'Запустите скачанный установщик, затем перезапустите браузер.';
+});
+$('#updSkip').addEventListener('click', async () => { if (updInfo) await send({ type: 'updskip', tag: updInfo.tag }); $('#upd').hidden = true; });
+$('#updCheck').addEventListener('click', async () => {
+  const b = $('#updCheck'); b.disabled = true; b.textContent = 'Проверяю…';
+  const u = await loadUpdate(true);
+  if (u && !u.available) { const l = (u.latest && cmpv(u.latest, u.current) > 0) ? 'Вы отложили версию ' + u.latest : 'У вас последняя версия'; $('#verText').textContent = 'v' + u.current + ' · ' + l; }
+  b.disabled = false; b.textContent = 'Проверить обновления';
+});
+const cmpv = (a, b) => { const x = a.split('.').map(Number), y = b.split('.').map(Number); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0) ? 1 : -1; return 0; };
+
+/* ---------- DNS ---------- */
+async function dnsRefresh() {
+  const r = await send({ type: 'dns', action: 'status' });
+  const st = $('#dnsState');
+  if (!r || r.hostMissing) { st.textContent = 'Нужен локальный помощник — запустите установщик.'; st.className = 'dnsState'; return; }
+  if (!r.ok) { st.textContent = r.error === 'unknown cmd' ? 'Нужна новая версия помощника — скачайте и запустите свежий установщик.' : (r.error || ''); st.className = 'dnsState'; $('#dnsFix').disabled = r.error === 'unknown cmd'; return; }
+  st.textContent = r.fixed ? 'DNS сейчас: Cloudflare + Google (1.1.1.1 / 8.8.8.8)' : 'DNS сейчас: настройки провайдера / по умолчанию';
+  st.className = 'dnsState' + (r.fixed ? ' ok' : '');
+  $('#dnsRestore').hidden = !(r.fixed || r.hasBackup);
+  $('#dnsFix').textContent = r.fixed ? 'Применить заново' : 'Исправить DNS';
+}
+async function dnsDo(action) {
+  const b = action === 'fix' ? $('#dnsFix') : $('#dnsRestore'), old = b.textContent;
+  showErr($('#dnsErr'), ''); $('#dnsFix').disabled = $('#dnsRestore').disabled = true; b.textContent = 'Подтвердите в окне Windows…';
+  const r = await send({ type: 'dns', action });
+  $('#dnsFix').disabled = $('#dnsRestore').disabled = false; b.textContent = old;
+  if (!r || !r.ok) showErr($('#dnsErr'), (r && r.hostMissing) ? 'Не найден локальный помощник.' : (r && r.error === 'unknown cmd') ? 'Нужна новая версия помощника — скачайте и запустите свежий установщик.' : ((r && r.error) || 'Не удалось'));
+  else if (r.note) showErr($('#dnsErr'), r.note);
+  await dnsRefresh();
+}
+$('#dnsFix').addEventListener('click', () => dnsDo('fix'));
+$('#dnsRestore').addEventListener('click', () => dnsDo('restore'));
+$('#netRefresh').addEventListener('click', loadNet);
+
 /* ---------- события ---------- */
 document.querySelectorAll('.nav').forEach((b) => b.addEventListener('click', () => {
   document.querySelectorAll('.nav').forEach((n) => n.classList.toggle('active', n === b));
   document.querySelectorAll('.view').forEach((v) => (v.hidden = v.id !== 'view-' + b.dataset.view));
-  if (b.dataset.view === 'settings') checkHelper();
+  if (b.dataset.view === 'settings') { checkHelper(); dnsRefresh(); }
 }));
 $('#cta').addEventListener('click', toggle);
 $('#power').addEventListener('click', (e) => { e.preventDefault(); toggle(); });
@@ -186,4 +262,6 @@ async function checkHelper() {
   Object.assign(S, await send({ type: 'state' }));
   await detectTab();
   render();
+  loadNet();
+  loadUpdate(false);
 })();

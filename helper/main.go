@@ -42,6 +42,7 @@ type Msg struct {
 	Cmd     string   `json:"cmd"`
 	Profile *Profile `json:"profile"`
 	Port    int      `json:"port"`
+	Host    string   `json:"host"`
 }
 
 type M = map[string]any
@@ -84,7 +85,7 @@ func handle(m Msg) M {
 		if x != "" {
 			name = filepath.Base(x)
 		}
-		return M{"ok": true, "xray": name, "version": 2, "hint": "переустановите Bogestv0 VPN"}
+		return M{"ok": true, "xray": name, "version": 3, "features": []string{"tcping", "dns"}, "hint": "переустановите Bogestv0 VPN"}
 	case "start":
 		if m.Profile == nil {
 			return M{"ok": false, "error": "нет профиля"}
@@ -99,6 +100,14 @@ func handle(m Msg) M {
 		return M{"ok": true}
 	case "status":
 		return status()
+	case "tcping":
+		return tcping(m.Host, m.Port)
+	case "dns-status":
+		return dnsStatus()
+	case "dns-fix":
+		return dnsFix()
+	case "dns-restore":
+		return dnsRestore()
 	}
 	return M{"ok": false, "error": "unknown cmd"}
 }
@@ -258,4 +267,33 @@ func start(pr Profile, port int) M {
 		}
 	}
 	return M{"ok": false, "error": "xray не запустился. " + strings.TrimSpace(tail)}
+}
+
+// tcping — время установки TCP-соединения с сервером (мс): 3 попытки, берём лучшую и среднюю.
+func tcping(host string, port int) M {
+	host = strings.TrimSpace(host)
+	if host == "" || len(host) > 253 || port < 1 || port > 65535 || strings.ContainsAny(host, " /\\?#@") {
+		return M{"ok": false, "error": "bad host"}
+	}
+	var best, sum time.Duration
+	okN := 0
+	for i := 0; i < 3; i++ {
+		t0 := time.Now()
+		c, err := net.DialTimeout("tcp", net.JoinHostPort(strings.Trim(host, "[]"), strconv.Itoa(port)), 2500*time.Millisecond)
+		if err != nil {
+			continue
+		}
+		d := time.Since(t0)
+		c.Close()
+		if okN == 0 || d < best {
+			best = d
+		}
+		sum += d
+		okN++
+		time.Sleep(60 * time.Millisecond)
+	}
+	if okN == 0 {
+		return M{"ok": false, "error": "нет ответа"}
+	}
+	return M{"ok": true, "ms": best.Milliseconds(), "avg": (sum / time.Duration(okN)).Milliseconds(), "n": okN}
 }

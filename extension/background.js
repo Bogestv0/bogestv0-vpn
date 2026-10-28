@@ -13,6 +13,33 @@ const native = (msg) => new Promise((resolve) => {
   } catch (e) { resolve({ ok: false, hostMissing: true, error: String(e) }); }
 });
 
+// ---- Обновления: сверяемся с последним релизом на GitHub ----
+const GH_REPO = 'bogestv0/bogestv0-vpn';   // владелец/репозиторий, где публикуются релизы
+const cmpVer = (a, b) => {
+  const pa = String(a).replace(/^v/i, '').split('.').map((x) => parseInt(x, 10) || 0);
+  const pb = String(b).replace(/^v/i, '').split('.').map((x) => parseInt(x, 10) || 0);
+  for (let i = 0; i < 3; i++) { if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0) ? 1 : -1; }
+  return 0;
+};
+async function checkUpdate(force) {
+  const cur = chrome.runtime.getManifest().version;
+  const st = await chrome.storage.local.get(['updCache', 'updSkip']);
+  let c = st.updCache;
+  if (force || !c || Date.now() - c.at > 6 * 3600 * 1000) {   // не чаще раза в 6 часов
+    try {
+      const r = await fetch('https://api.github.com/repos/' + GH_REPO + '/releases/latest', { headers: { Accept: 'application/vnd.github+json' }, cache: 'no-store' });
+      if (r.ok) {
+        const j = await r.json();
+        const asset = (j.assets || []).find((a) => /Setup\.exe$/i.test(a.name));
+        c = { at: Date.now(), tag: String(j.tag_name || ''), page: String(j.html_url || ''), asset: asset ? asset.browser_download_url : '' };
+        await setState({ updCache: c });
+      }
+    } catch (e) { /* нет сети — просто без баннера */ }
+  }
+  if (!c || !c.tag) return { available: false, current: cur };
+  return { available: cmpVer(c.tag, cur) > 0 && st.updSkip !== c.tag, current: cur, latest: c.tag.replace(/^v/i, ''), tag: c.tag, url: c.asset || c.page };
+}
+
 // ---- Подписка: одна ссылка на все устройства. Браузер занимает одно место по своему HWID. ----
 const SUB_RE = /^https:\/\/notify\.bogestv0\.ru\/vpn\/s\/[0-9]+-[0-9a-f]{24}(?:-[0-9a-f]{24})?\/?$/i;
 async function getHwid() {
@@ -142,6 +169,10 @@ chrome.runtime.onMessage.addListener((msg, _s, send) => {
   (async () => {
     switch (msg.type) {
       case 'state': return send(await sync());
+      case 'update': return send(await checkUpdate(!!msg.force));
+      case 'updskip': await setState({ updSkip: String(msg.tag || '') }); return send({ ok: true });
+      case 'tcping': return send(await native({ cmd: 'tcping', host: msg.host, port: msg.port }));
+      case 'dns': return send(['status', 'fix', 'restore'].includes(msg.action) ? await native({ cmd: 'dns-' + msg.action }) : { ok: false, error: 'unknown' });
       case 'addsub': return send(await addSub(msg.url));
       case 'connect': return send(await connect(msg.id));
       case 'disconnect': return send(await disconnect());
