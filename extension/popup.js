@@ -88,6 +88,13 @@ async function toggle() {
 
 async function addLink(raw) {
   showErr($('#addErr'), '');
+  if (/^\s*https?:\/\//i.test(raw)) {   // ссылка-подписка: одна на все устройства
+    const r = await send({ type: 'addsub', url: raw });
+    if (!r || !r.ok) return showErr($('#addErr'), (r && r.error) || 'Не удалось добавить подписку');
+    Object.assign(S, await send({ type: 'state' }));
+    $('#linkInput').value = '';
+    return render();
+  }
   try {
     const parsed = Vless.parseVless(raw);
     const exists = S.profiles.find((p) => p.parsed.id === parsed.id && p.parsed.host === parsed.host && p.parsed.port === parsed.port);
@@ -126,7 +133,7 @@ $('#btnPaste').addEventListener('click', async () => {
 });
 $('#linkInput').addEventListener('paste', (e) => {
   const t = (e.clipboardData || window.clipboardData).getData('text');
-  if (/vless:\/\//i.test(t)) { e.preventDefault(); $('#linkInput').value = t; addLink(t); }
+  if (/(vless|https?):\/\//i.test(t)) { e.preventDefault(); $('#linkInput').value = t; addLink(t); }
 });
 $('#servers').addEventListener('click', async (e) => {
   const del = e.target.closest('[data-del]');

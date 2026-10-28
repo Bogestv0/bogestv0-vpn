@@ -13,6 +13,50 @@ const native = (msg) => new Promise((resolve) => {
   } catch (e) { resolve({ ok: false, hostMissing: true, error: String(e) }); }
 });
 
+// ---- Подписка: одна ссылка на все устройства. Браузер занимает одно место по своему HWID. ----
+const SUB_RE = /^https:\/\/notify\.bogestv0\.ru\/vpn\/s\/[0-9]+-[0-9a-f]{24}(?:-[0-9a-f]{24})?\/?$/i;
+async function getHwid() {
+  const { hwid } = await chrome.storage.local.get('hwid');
+  if (hwid) return hwid;
+  const a = new Uint8Array(16); crypto.getRandomValues(a);
+  const h = Array.from(a, (b) => b.toString(16).padStart(2, '0')).join('');
+  await chrome.storage.local.set({ hwid: h });
+  return h;
+}
+function deviceInfo() {
+  const ua = navigator.userAgent;
+  const br = /Edg\//.test(ua) ? 'Edge' : /OPR\//.test(ua) ? 'Opera' : /Brave/.test(ua) ? 'Brave' : 'Chrome';
+  const os = /Windows/.test(ua) ? 'Windows' : /Mac OS/.test(ua) ? 'macOS' : /Linux/.test(ua) ? 'Linux' : 'PC';
+  return { model: 'Browser ' + br, os: os };   // только ASCII: это значения HTTP-заголовков
+}
+// Загрузить подписку и вернуть разобранный vless-профиль. Бросает Error с понятным текстом.
+async function fetchSub(url) {
+  const di = deviceInfo();
+  let r;
+  try {
+    r = await fetch(url, { cache: 'no-store', headers: { 'x-hwid': await getHwid(), 'x-device-os': di.os, 'x-device-model': di.model } });
+  } catch (e) { throw new Error('Не удалось загрузить подписку: нет связи с сервером.'); }
+  const text = (await r.text()).trim();
+  if (!r.ok) throw new Error(text.slice(0, 200) || ('Ошибка подписки (' + r.status + ')'));
+  let body = '';
+  try { body = atob(text); } catch (e) { body = text; }
+  const line = body.split(/\r?\n/).map((x) => x.trim()).find((x) => /^vless:\/\//i.test(x));
+  if (!line) throw new Error('В подписке нет ключа vless://');
+  return Vless.parseVless(line);
+}
+async function addSub(url) {
+  url = String(url || '').trim();
+  if (!SUB_RE.test(url)) return { ok: false, error: 'Это не ссылка-подписка Bogestv0 VPN.' };
+  let parsed;
+  try { parsed = await fetchSub(url); } catch (e) { return { ok: false, error: e.message }; }
+  const st = await getState();
+  const have = st.profiles.find((p) => p.sub === url);
+  const profiles = have ? st.profiles.map((p) => (p === have ? Object.assign({}, p, { parsed }) : p)) : st.profiles.concat({ id: crypto.randomUUID(), parsed, sub: url });
+  const id = have ? have.id : profiles[profiles.length - 1].id;
+  await setState({ profiles, activeId: id });
+  return { ok: true };
+}
+
 const getState = async () => Object.assign({}, DEFAULTS, await chrome.storage.local.get(null));
 const setState = (patch) => chrome.storage.local.set(patch);
 
@@ -54,7 +98,15 @@ function badge(on) {
 async function connect(id) {
   const st = await getState();
   const profile = st.profiles.find((p) => p.id === (id || st.activeId));
-  if (!profile) return { ok: false, error: 'Сначала добавьте ссылку vless:// на вкладке «Серверы»' };
+  if (!profile) return { ok: false, error: 'Сначала добавьте ссылку на вкладке «Серверы»' };
+  if (profile.sub) {   // обновляем ключ из подписки: так работают перевыпуск ключа, «Отвязать» и лимит устройств
+    try {
+      profile.parsed = await fetchSub(profile.sub);
+      await setState({ profiles: st.profiles.map((p) => (p.id === profile.id ? profile : p)) });
+    } catch (e) {
+      if (!/нет связи/.test(e.message)) return { ok: false, error: e.message };   // отказ сервера — показываем причину; нет сети — пробуем сохранённый ключ
+    }
+  }
   const r = await native({ cmd: 'start', profile: profile.parsed, port: st.port });
   if (!r.ok) return r;
   await applyProxy(st);
@@ -90,6 +142,7 @@ chrome.runtime.onMessage.addListener((msg, _s, send) => {
   (async () => {
     switch (msg.type) {
       case 'state': return send(await sync());
+      case 'addsub': return send(await addSub(msg.url));
       case 'connect': return send(await connect(msg.id));
       case 'disconnect': return send(await disconnect());
       case 'ping': return send(await native({ cmd: 'ping' }));
