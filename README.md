@@ -8,6 +8,10 @@
 
 ---
 
+## Что нового в 1.3.1
+
+* Новый логотип: значок расширения, иконки включено/выключено и шапка окна.
+
 ## Что нового в 1.3.0
 
 ### Обновления без переустановки
@@ -201,7 +205,7 @@ build.sh     сборка
 **Сборка** (нужен Go 1.21+):
 ```bash
 ./build.sh                 # → dist/Bogestv0-VPN-Setup.exe
-VERSION=1.3.0 REPO=bogestv0/bogestv0-vpn ./build.sh   # версия и репозиторий релизов (в GitHub Actions берутся из тега)
+VERSION=1.3.1 REPO=bogestv0/bogestv0-vpn ./build.sh   # версия и репозиторий релизов (в GitHub Actions берутся из тега)
 # положите xray.zip (Xray-windows-64.zip) рядом — тогда xray вшивается в установщик
 ```
 

@@ -29,8 +29,8 @@ const (
 	xrayURLWin = "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-windows-64.zip"
 )
 
-// version подставляется при сборке: -X main.version=1.3.0
-var version = "1.3.0"
+// version подставляется при сборке: -X main.version=1.3.1
+var version = "1.3.1"
 
 // updateMode — тихое обновление: без окон, вопросов и перезапуска xray.
 var updateMode bool

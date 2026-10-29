@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Bogestv0 VPN",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "VPN по ссылке vless:// (Reality, XTLS Vision) через локальный xray-core.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAx8eWNiJD/euBLL9KAgAiN4gXXivEb186CHRwNkGghs5M76bA9b7iNSckWaqSZUpo8mY449fK8MwDwaWprZSMJMDzsJb4GKQYR0bj+X6aiucl8qPOj6/CO5yidiN09D/U+DwiXzdoCpxlJoz9+k5LOqIykHBt06O+k+uCbeWOkR3wCIBlXUmPhlJiSq+H8V9/lexxOcpI7JU2OZvLeLOIi5QtvYZlhQf4hUsatvHbYGTG1PFbxZPOgYrgHaDLJTJqepClP+WdrBXvI93OvR+BucKt68u7ERqoC/lxYyTlTPmxMbIKIkIWq/KcOpncd5I6nnhrjrP+Ne7voJewq4IqgQIDAQAB",
   "minimum_chrome_version": "110",
