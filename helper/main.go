@@ -151,6 +151,22 @@ func findXray() string {
 	return ""
 }
 
+// freePort ищет ближайший свободный порт выше занятого (1024–65535); 0, если не нашёл.
+func freePort(from int) int {
+	for p := from + 1; p <= from+200 && p <= 65535; p++ {
+		if p < 1024 || portOpen(p) {
+			continue
+		}
+		l, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(p))
+		if err != nil {
+			continue
+		}
+		l.Close()
+		return p
+	}
+	return 0
+}
+
 func portOpen(port int) bool {
 	c, err := net.DialTimeout("tcp", "127.0.0.1:"+strconv.Itoa(port), 400*time.Millisecond)
 	if err != nil {
@@ -250,7 +266,12 @@ func start(pr Profile, port int) M {
 	}
 	stop()
 	if portOpen(port) {
-		return M{"ok": false, "error": fmt.Sprintf("Порт %d уже занят другой программой. Смените порт в настройках.", port)}
+		msg := fmt.Sprintf("Порт %d уже занят другой программой. Смените порт в настройках.", port)
+		fp := freePort(port)
+		if fp > 0 {
+			msg += fmt.Sprintf(" Свободен порт %d — можно указать его.", fp)
+		}
+		return M{"ok": false, "error": msg, "freePort": fp}
 	}
 	cfg, _ := json.MarshalIndent(buildConfig(pr, port), "", "  ")
 	if err := os.WriteFile(p("config.json"), cfg, 0o600); err != nil {
