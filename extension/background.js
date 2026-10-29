@@ -41,7 +41,7 @@ async function checkUpdate(force) {
 }
 
 // ---- Подписка: одна ссылка на все устройства. Браузер занимает одно место по своему HWID. ----
-const SUB_RE = /^https:\/\/notify\.bogestv0\.ru\/vpn\/s\/[0-9]+-[0-9a-f]{24}(?:-[0-9a-f]{24})?\/?$/i;
+const SUB_RE = /^https:\/\/[a-z0-9.-]+(?::\d+)?\/vpn\/s\/[0-9]+-[0-9a-f]{24}(?:-[0-9a-f]{24})?\/?$/i;
 async function getHwid() {
   const { hwid } = await chrome.storage.local.get('hwid');
   if (hwid) return hwid;
@@ -62,7 +62,7 @@ async function fetchSub(url) {
   let r;
   try {
     r = await fetch(url, { cache: 'no-store', headers: { 'x-hwid': await getHwid(), 'x-device-os': di.os, 'x-device-model': di.model } });
-  } catch (e) { throw new Error('Не удалось загрузить подписку: нет связи с сервером.'); }
+  } catch (e) { throw new Error('Не удалось загрузить подписку: нет связи с сервером. Если сайт не открывается без VPN — возьмите запасную ссылку в боте (/myvpn) или нажмите «Исправить DNS» в настройках.'); }
   const text = (await r.text()).trim();
   if (!r.ok) throw new Error(text.slice(0, 200) || ('Ошибка подписки (' + r.status + ')'));
   let body = '';
