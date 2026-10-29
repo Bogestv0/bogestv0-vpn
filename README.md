@@ -2,8 +2,6 @@
 
 Расширение для Chrome / Edge / Brave: вставляете ссылку `vless://…` — и весь трафик браузера идёт через ваш сервер (VLESS + Reality, XTLS Vision).
 
-<img src="docs/screenshot.png" width="300" alt="Интерфейс, тёмная тема"> <img src="docs/screenshot-light.png" width="300" alt="Интерфейс, светлая тема">
-
 Автор и разработчик: **Bogestv0** · Telegram-канал **[@bogestv0](https://t.me/bogestv0)** · © 2026 Bogestv0
 
 ---
