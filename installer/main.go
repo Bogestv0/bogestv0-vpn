@@ -1,4 +1,5 @@
-// Bogestv0 VPN — установщик для Windows (один .exe, без Python).
+// Bogestv0 VPN © 2026 Bogestv0 (https://t.me/bogestv0) — установщик для Windows (один .exe, без Python).
+// Ключ --update: тихое обновление на месте (его запускает помощник по команде расширения).
 package main
 
 import (
@@ -25,9 +26,14 @@ var assets embed.FS
 const (
 	hostID     = "com.bogestv0.vpn"
 	devExtID   = "cfilndkhacojgcfnepiiljkpaikemkgc" // ID распакованного расширения (из "key" в manifest.json)
-	version    = "1.1.0"
 	xrayURLWin = "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-windows-64.zip"
 )
+
+// version подставляется при сборке: -X main.version=1.3.0
+var version = "1.3.0"
+
+// updateMode — тихое обновление: без окон, вопросов и перезапуска xray.
+var updateMode bool
 
 // storeIDs — ID из Chrome Web Store / Edge Add-ons через запятую (задаётся при сборке: -ldflags "-X main.storeIDs=...")
 var storeIDs = ""
@@ -44,41 +50,65 @@ func main() {
 		uninstall(dest)
 		return
 	}
+	updateMode = len(os.Args) > 1 && os.Args[1] == "--update"
 	install(dest)
 }
 
 func say(f string, a ...any) { fmt.Printf(f+"\n", a...) }
 
 func pause() {
-	if os.Getenv("BOGESTV0_NOPAUSE") != "" {
+	if updateMode || os.Getenv("BOGESTV0_NOPAUSE") != "" {
 		return
 	}
 	fmt.Print("\nНажмите Enter, чтобы закрыть окно...")
 	bufio.NewReader(os.Stdin).ReadString('\n')
 }
 
+// writeUpdateStatus сообщает расширению (через помощника) итог тихого обновления.
+func writeUpdateStatus(dest, state, errText string) {
+	if !updateMode {
+		return
+	}
+	b, _ := json.Marshal(map[string]any{"state": state, "version": version, "error": errText, "at": time.Now().Unix()})
+	tmp := filepath.Join(dest, "update.json.tmp")
+	if os.WriteFile(tmp, b, 0o600) == nil {
+		os.Rename(tmp, filepath.Join(dest, "update.json"))
+	}
+}
+
+var destDir string
+
 func fatal(msg string, err error) {
 	say("\n[ОШИБКА] %s", msg)
+	text := msg
 	if err != nil {
 		say("         %v", err)
+		text += ": " + err.Error()
 	}
+	writeUpdateStatus(destDir, "error", text)
 	pause()
 	os.Exit(1)
 }
 
 func install(dest string) {
+	destDir = dest
 	say("==============================================")
 	say("   Bogestv0 VPN — установка (версия %s)", version)
 	say("==============================================\n")
 
-	stopRunning(dest)
+	if !updateMode { // при обновлении VPN не отключаем: xray не заменяется
+		stopRunning(dest)
+	}
 
 	// 1. файлы
 	say("[1/4] Копирую файлы...")
 	if err := os.MkdirAll(filepath.Join(dest, "bin"), 0o755); err != nil {
 		fatal("Не удалось создать папку "+dest, err)
 	}
-	_ = os.RemoveAll(filepath.Join(dest, "extension"))
+	for _, old := range []string{"bogestv0-host.exe.old", "uninstall.exe.old"} { // остатки прошлого обновления
+		os.Remove(filepath.Join(dest, old))
+	}
+	newExt := map[string]bool{}
 	err := fs.WalkDir(assets, "assets", func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
@@ -89,12 +119,16 @@ func install(dest string) {
 		}
 		data, _ := assets.ReadFile(path)
 		target := filepath.Join(dest, filepath.FromSlash(rel))
+		if strings.HasPrefix(rel, "extension/") {
+			newExt[filepath.Clean(target)] = true
+		}
 		os.MkdirAll(filepath.Dir(target), 0o755)
-		return os.WriteFile(target, data, 0o755)
+		return writeFile(target, data)
 	})
 	if err != nil {
 		fatal("Не удалось распаковать файлы", err)
 	}
+	pruneExtension(filepath.Join(dest, "extension"), newExt) // убираем файлы прошлых версий, которых больше нет
 
 	// 2. xray
 	say("[2/4] Устанавливаю xray-core...")
@@ -125,7 +159,7 @@ func install(dest string) {
 		"type": "stdio", "allowed_origins": origins,
 	}, "", "  ")
 	manifestPath := filepath.Join(dest, hostID+".json")
-	os.WriteFile(manifestPath, manifest, 0o644)
+	writeFile(manifestPath, manifest)
 	for _, b := range browsers {
 		regAdd(`HKCU\Software\`+b+`\NativeMessagingHosts\`+hostID, "", manifestPath)
 	}
@@ -134,7 +168,7 @@ func install(dest string) {
 	if self, err := os.Executable(); err == nil {
 		if data, err := os.ReadFile(self); err == nil {
 			un := filepath.Join(dest, exeName("uninstall"))
-			os.WriteFile(un, data, 0o755)
+			writeFile(un, data)
 			k := `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Bogestv0VPN`
 			regAdd(k, "DisplayName", "Bogestv0 VPN")
 			regAdd(k, "DisplayVersion", version)
@@ -146,6 +180,10 @@ func install(dest string) {
 
 	// 4. расширение
 	extDir := filepath.Join(dest, "extension")
+	if updateMode {
+		writeUpdateStatus(dest, "done", "")
+		return
+	}
 	say("[4/4] Готово! Осталось добавить расширение в браузер.\n")
 	if storeIDs == "" {
 		say("  Сейчас откроются страница расширений и папка с расширением:")
@@ -160,6 +198,47 @@ func install(dest string) {
 	}
 	say("\nУдалить программу можно в «Параметры → Приложения».")
 	pause()
+}
+
+// writeFile пишет файл; если он занят (например, помощник как раз запущен браузером),
+// несколько раз повторяет попытку, а затем отодвигает занятый файл в «.old» и пишет новый.
+func writeFile(target string, data []byte) error {
+	var err error
+	for i := 0; i < 8; i++ {
+		if err = os.WriteFile(target, data, 0o755); err == nil {
+			return nil
+		}
+		time.Sleep(400 * time.Millisecond)
+	}
+	old := target + ".old"
+	os.Remove(old)
+	if os.Rename(target, old) == nil {
+		return os.WriteFile(target, data, 0o755)
+	}
+	return err
+}
+
+func pruneExtension(dir string, keep map[string]bool) {
+	var files []string
+	filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && !keep[filepath.Clean(p)] {
+			files = append(files, p)
+		}
+		return nil
+	})
+	for _, f := range files {
+		os.Remove(f)
+	}
+	var dirs []string
+	filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err == nil && d.IsDir() && p != dir {
+			dirs = append(dirs, p)
+		}
+		return nil
+	})
+	for i := len(dirs) - 1; i >= 0; i-- {
+		os.Remove(dirs[i]) // удалится только пустая папка
+	}
 }
 
 func exeName(n string) string {

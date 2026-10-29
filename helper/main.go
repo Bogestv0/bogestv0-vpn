@@ -1,4 +1,4 @@
-// Bogestv0 VPN — native-messaging помощник. Запускает/останавливает xray-core.
+// Bogestv0 VPN © 2026 Bogestv0 (https://t.me/bogestv0) — native-messaging помощник. Запускает/останавливает xray-core.
 // Протокол Chrome Native Messaging: 4 байта длины (LE) + JSON.
 package main
 
@@ -43,6 +43,7 @@ type Msg struct {
 	Profile *Profile `json:"profile"`
 	Port    int      `json:"port"`
 	Host    string   `json:"host"`
+	Tag     string   `json:"tag"`
 }
 
 type M = map[string]any
@@ -50,8 +51,24 @@ type M = map[string]any
 func main() {
 	exe, _ := os.Executable()
 	baseDir = filepath.Dir(exe)
-	if len(os.Args) > 1 && os.Args[1] == "--base" && len(os.Args) > 2 { // для тестов
-		baseDir = os.Args[2]
+	updTag := ""
+	for i := 1; i < len(os.Args); i++ {
+		switch os.Args[i] {
+		case "--base": // для тестов и для процесса обновления
+			if i+1 < len(os.Args) {
+				baseDir = os.Args[i+1]
+				i++
+			}
+		case "--do-update": // процесс обновления, запущенный командой update-start
+			if i+1 < len(os.Args) {
+				updTag = os.Args[i+1]
+				i++
+			}
+		}
+	}
+	if updTag != "" {
+		doUpdate(updTag)
+		return
 	}
 	raw := make([]byte, 4)
 	if _, err := io.ReadFull(os.Stdin, raw); err != nil {
@@ -85,7 +102,7 @@ func handle(m Msg) M {
 		if x != "" {
 			name = filepath.Base(x)
 		}
-		return M{"ok": true, "xray": name, "version": 3, "features": []string{"tcping", "dns"}, "hint": "переустановите Bogestv0 VPN"}
+		return M{"ok": true, "xray": name, "version": 4, "app": appVersion, "features": []string{"tcping", "dns", "update"}, "hint": "переустановите Bogestv0 VPN"}
 	case "start":
 		if m.Profile == nil {
 			return M{"ok": false, "error": "нет профиля"}
@@ -102,6 +119,10 @@ func handle(m Msg) M {
 		return status()
 	case "tcping":
 		return tcping(m.Host, m.Port)
+	case "update-start":
+		return updateStart(m.Tag)
+	case "update-status":
+		return updateStatus()
 	case "dns-status":
 		return dnsStatus()
 	case "dns-fix":

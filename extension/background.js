@@ -1,4 +1,4 @@
-// Bogestv0 VPN — фоновый сервис: управляет xray через native host и прокси браузера
+// Bogestv0 VPN © 2026 Bogestv0 (https://t.me/bogestv0) — фоновый сервис: управляет xray через native host и прокси браузера
 importScripts('lib/vless.js');
 
 const HOST = 'com.bogestv0.vpn';
@@ -38,6 +38,58 @@ async function checkUpdate(force) {
   }
   if (!c || !c.tag) return { available: false, current: cur };
   return { available: cmpVer(c.tag, cur) > 0 && st.updSkip !== c.tag, current: cur, latest: c.tag.replace(/^v/i, ''), tag: c.tag, url: c.asset || c.page };
+}
+
+// ---- Автообновление: помощник скачивает и ставит релиз, расширение само перезагружается ----
+// Состояние хранится в storage (updRun), чтобы popup мог показать ход обновления и после переоткрытия.
+let updLoop = false;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function updStart(tag) {
+  tag = String(tag || '');
+  if (!/^v?\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(tag)) return { ok: false, error: 'неверный номер версии' };
+  if (updLoop) return { ok: true };
+  const r = await native({ cmd: 'update-start', tag });
+  if (!r.ok) {
+    // старый помощник (до 1.3.0) не знает этой команды — один раз нужно поставить новый установщик вручную
+    const legacy = !!r.hostMissing || r.error === 'unknown cmd';
+    await setState({ updRun: { state: 'error', tag, legacy, error: legacy ? '' : (r.error || 'не удалось начать обновление') } });
+    return { ok: false, legacy, error: r.error };
+  }
+  await setState({ updRun: { state: 'downloading', tag, at: Date.now() } });
+  updWatch(tag);
+  return { ok: true };
+}
+async function updWatch(tag) {
+  if (updLoop) return;
+  updLoop = true;
+  const t0 = Date.now();
+  try {
+    while (Date.now() - t0 < 10 * 60 * 1000) {
+      await sleep(1500);
+      const s = await native({ cmd: 'update-status' });
+      if (!s.ok) continue;   // помощник на миг занят заменой файлов — пробуем ещё
+      if (s.state === 'done') {
+        await setState({ updRun: { state: 'restarting', tag }, updDone: String(s.version || tag) });
+        await sleep(600);
+        chrome.runtime.reload();   // подхватит новые файлы расширения из папки установки
+        return;
+      }
+      if (s.state === 'error') { await setState({ updRun: { state: 'error', tag, error: s.error || 'ошибка обновления' } }); return; }
+      if (s.state === 'downloading' || s.state === 'verifying' || s.state === 'installing') await setState({ updRun: { state: s.state, tag, at: Date.now() } });
+    }
+    await setState({ updRun: { state: 'error', tag, error: 'обновление не завершилось вовремя' } });
+  } finally { updLoop = false; }
+}
+// После перезагрузки расширения: показываем «Обновлено» один раз и сбрасываем состояние
+async function afterReload() {
+  const st = await chrome.storage.local.get(['updDone', 'updRun']);
+  if (st.updDone) {
+    await chrome.storage.local.remove(['updDone', 'updRun']);
+    await setState({ updToast: String(st.updDone).replace(/^v/i, '') });
+  } else if (st.updRun && st.updRun.state !== 'error') {
+    // служебный процесс мог прерваться вместе с браузером — не оставляем «вечную» загрузку
+    await chrome.storage.local.remove('updRun');
+  }
 }
 
 // ---- Подписка: одна ссылка на все устройства. Браузер занимает одно место по своему HWID. ----
@@ -117,7 +169,7 @@ const clearProxy = () => chrome.proxy.settings.clear({ scope: 'regular' });
 
 function badge(on) {
   chrome.action.setBadgeText({ text: on ? 'ON' : '' });
-  chrome.action.setBadgeBackgroundColor({ color: '#3b9a47' });
+  chrome.action.setBadgeBackgroundColor({ color: '#1f77bd' });
   const sfx = on ? 'on' : 'off';
   chrome.action.setIcon({ path: { 16: `icons/${sfx}16.png`, 32: `icons/${sfx}32.png` } });
 }
@@ -161,6 +213,7 @@ async function sync() {
     badge(false);
     return Object.assign(st, { connected: false });
   }
+  await applyProxy(st);   // после перезагрузки расширения (в том числе при обновлении) настройки прокси заново ставятся
   badge(true);
   return st;
 }
@@ -168,8 +221,14 @@ async function sync() {
 chrome.runtime.onMessage.addListener((msg, _s, send) => {
   (async () => {
     switch (msg.type) {
-      case 'state': return send(await sync());
+      case 'state': {
+        const st = await sync();
+        if (st.updRun && ['downloading', 'verifying', 'installing'].includes(st.updRun.state) && !updLoop) updWatch(st.updRun.tag);   // служебный процесс браузера мог перезапуститься
+        return send(st);
+      }
       case 'update': return send(await checkUpdate(!!msg.force));
+      case 'updgo': return send(await updStart(msg.tag));
+      case 'updclear': await chrome.storage.local.remove(['updRun', 'updToast']); return send({ ok: true });
       case 'updskip': await setState({ updSkip: String(msg.tag || '') }); return send({ ok: true });
       case 'tcping': return send(await native({ cmd: 'tcping', host: msg.host, port: msg.port }));
       case 'dns': return send(['status', 'fix', 'restore'].includes(msg.action) ? await native({ cmd: 'dns-' + msg.action }) : { ok: false, error: 'unknown' });
@@ -188,5 +247,5 @@ chrome.runtime.onMessage.addListener((msg, _s, send) => {
   return true;
 });
 
-chrome.runtime.onStartup.addListener(sync);
-chrome.runtime.onInstalled.addListener(sync);
+chrome.runtime.onStartup.addListener(() => { afterReload().then(sync); });
+chrome.runtime.onInstalled.addListener(() => { afterReload().then(sync); });

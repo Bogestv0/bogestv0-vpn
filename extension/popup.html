@@ -3,23 +3,26 @@
 <head>
 <meta charset="utf-8">
 <title>Bogestv0 VPN</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600&family=Unbounded:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="popup.css">
 </head>
 <body>
 <div class="app" id="app" data-state="off">
 
   <header class="top">
-    <span class="brand">Bogestv0 <b>VPN</b></span>
+    <span class="brand"><img src="icons/icon48.png" alt="">Bogestv0 <b>VPN</b></span>
     <button class="chip" id="chipServer" title="Текущий сервер"><span class="dot"></span><span id="chipText">нет сервера</span></button>
   </header>
 
   <div class="upd" id="upd" hidden>
-    <div><b id="updTitle">Доступно обновление</b><small id="updText"></small></div>
-    <div class="row"><button class="btn" id="updGo">Обновить</button><button class="btn ghost" id="updSkip" title="Не напоминать об этой версии">Позже</button></div>
+    <div class="ut"><b id="updTitle">Доступно обновление</b><small id="updText"></small></div>
+    <div class="prog" id="updProg" hidden><i></i></div>
+    <div class="row" id="updBtns"><button class="btn" id="updGo">Обновить</button><button class="btn ghost" id="updSkip" title="Не напоминать об этой версии">Позже</button></div>
   </div>
 
   <!-- ГЛАВНАЯ -->
   <main class="view" id="view-home">
+    <div class="hero">
     <div class="globe-wrap">
       <svg class="globe" viewBox="0 0 200 200" aria-hidden="true">
         <defs>
@@ -50,6 +53,7 @@
 
     <h1 id="title">Защита отключена</h1>
     <p class="sub" id="sub">Соединение не шифруется.<br>Ваш IP и местоположение доступны третьим лицам.</p>
+    </div>
 
     <div class="net" id="net">
       <div><span>IP</span><b id="ip4" title="">…</b></div>
@@ -68,6 +72,7 @@
   <!-- СЕРВЕРЫ -->
   <main class="view" id="view-servers" hidden>
     <h2>Серверы</h2>
+    <div class="panel">
     <label class="lbl" for="linkInput">Вставьте ссылку-подписку из бота</label>
     <textarea id="linkInput" rows="3" spellcheck="false" placeholder="https://notify.bogestv0.ru/vpn/s/… (или vless://…)"></textarea>
     <div class="row">
@@ -75,6 +80,7 @@
       <button class="btn ghost" id="btnPaste" title="Вставить из буфера">Из буфера</button>
     </div>
     <div class="err" id="addErr" hidden></div>
+    </div>
     <ul class="list" id="servers"></ul>
     <p class="empty" id="serversEmpty">Пока нет ни одного сервера.</p>
   </main>
@@ -83,15 +89,15 @@
   <main class="view" id="view-settings" hidden>
     <h2>Настройки</h2>
 
-    <div class="field">
+    <div class="panel field">
       <span class="lbl">Режим</span>
       <div class="seg" id="modeSeg">
         <button data-mode="all">Весь трафик</button>
-        <button data-mode="list">Только сайты из списка</button>
+        <button data-mode="list">Только из списка</button>
       </div>
     </div>
 
-    <div class="field" id="sitesField">
+    <div class="panel field" id="sitesField">
       <label class="lbl" for="siteInput">Сайты через VPN</label>
       <div class="row">
         <input id="siteInput" type="text" placeholder="например, github.com" spellcheck="false">
@@ -100,12 +106,12 @@
       <ul class="tags" id="sites"></ul>
     </div>
 
-    <div class="field">
+    <div class="panel field">
       <label class="lbl" for="portInput">Локальный порт SOCKS5</label>
       <input id="portInput" type="number" min="1024" max="65535">
     </div>
 
-    <div class="field">
+    <div class="panel field">
       <span class="lbl">Не открываются сайты? Исправить DNS</span>
       <p class="hint">Провайдер блокирует или подменяет ответы DNS — обход пакетов тут не поможет, пока DNS не заменён. Нажмите кнопку: программа поставит DNS Cloudflare и Google (1.1.1.1 / 8.8.8.8). Вернуть можно в любой момент. Windows попросит подтверждение.</p>
       <div class="row"><button class="btn" id="dnsFix">Исправить DNS</button><button class="btn ghost" id="dnsRestore" hidden>Вернуть как было</button></div>
@@ -113,26 +119,28 @@
       <div class="err" id="dnsErr" hidden></div>
     </div>
 
-    <div class="field">
+    <div class="panel field">
       <span class="lbl">Помощник (xray-core)</span>
       <div class="helper" id="helper"><span class="dot"></span><span id="helperText">проверяю…</span></div>
     </div>
 
-    <div class="field">
+    <div class="panel field">
       <span class="lbl">Версия</span>
-      <div class="row"><span class="ver" id="verText"></span><button class="btn ghost" id="updCheck">Проверить обновления</button></div>
+      <div class="row"><span class="ver" id="verText"></span><button class="btn ghost" id="updCheck" style="flex:none">Проверить обновления</button></div>
+      <p class="hint">Обновления ставятся сами: по кнопке «Обновить» в верхнем баннере. Ничего удалять и устанавливать заново не нужно.</p>
     </div>
+    <p class="hint" style="text-align:center">Bogestv0 VPN · © 2026 Bogestv0 · <a href="https://t.me/bogestv0" target="_blank" style="color:var(--signal);text-decoration:none">t.me/bogestv0</a></p>
   </main>
 
   <nav class="bar">
     <button class="nav active" data-view="home" title="Главная">
-      <svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>
+      <svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Главная
     </button>
     <button class="nav" data-view="servers" title="Серверы">
-      <svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="2.4"/><circle cx="18" cy="6" r="2.4"/><circle cx="18" cy="18" r="2.4"/><path d="M8.2 11l7.6-4M8.2 13l7.6 4"/></svg>
+      <svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="2.4"/><circle cx="18" cy="6" r="2.4"/><circle cx="18" cy="18" r="2.4"/><path d="M8.2 11l7.6-4M8.2 13l7.6 4"/></svg>Серверы
     </button>
     <button class="nav" data-view="settings" title="Настройки">
-      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Настройки
     </button>
     <span class="grow"></span>
     <label class="switch" title="Включить / выключить">

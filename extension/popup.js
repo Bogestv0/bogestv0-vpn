@@ -1,3 +1,4 @@
+// Bogestv0 VPN © 2026 Bogestv0 (https://t.me/bogestv0)
 const $ = (s) => document.querySelector(s);
 const send = (msg) => new Promise((r) => chrome.runtime.sendMessage(msg, r));
 let S = { profiles: [], activeId: null, connected: false, mode: 'all', sites: [], port: 10808 };
@@ -46,7 +47,7 @@ function render() {
   $('#serversEmpty').hidden = S.profiles.length > 0;
   $('#servers').innerHTML = S.profiles.map((p) => `
     <li data-id="${p.id}" class="${p.id === S.activeId ? 'sel' : ''}">
-      <span class="dot" style="${p.id === S.activeId ? 'background:var(--green2)' : ''}"></span>
+      <span class="dot"></span>
       <div class="nm"><b>${esc(p.parsed.name)}</b><small>${esc(p.parsed.host)}:${p.parsed.port} · ${esc(p.parsed.security)}/${esc(p.parsed.network)}</small></div>
       <button class="del" data-del="${p.id}" title="Удалить">✕</button>
     </li>`).join('');
@@ -80,7 +81,7 @@ async function toggle() {
   Object.assign(S, fresh);
   if (r && !r.ok) {
     showErr($('#err'), r.hostMissing
-      ? 'Не найден локальный помощник. Запустите install-windows.bat из папки host (один раз) и перезапустите браузер.'
+      ? 'Не найден локальный помощник. Запустите Bogestv0-VPN-Setup.exe (один раз) и полностью перезапустите браузер.'
       : (r.error || 'Не удалось подключиться'));
   }
   render();
@@ -144,23 +145,79 @@ async function loadNet() {
 
 /* ---------- обновления ---------- */
 let updInfo = null;
+const UPD_STAGE = { downloading: 'Скачиваю обновление…', verifying: 'Проверяю файл…', installing: 'Устанавливаю…', restarting: 'Перезапускаю расширение…' };
+function updBtns(go, skip) {
+  $('#updGo').hidden = !go; if (go) $('#updGo').textContent = go;
+  $('#updSkip').hidden = !skip; if (skip) $('#updSkip').textContent = skip;
+  $('#updBtns').hidden = !go && !skip;
+}
+function renderUpd() {
+  const box = $('#upd'), run = S.updRun, u = updInfo;
+  box.classList.remove('done', 'bad');
+  $('#updProg').hidden = true;
+  setTimeout(() => $('#app').classList.toggle('hasupd', !box.hidden), 0);
+  if (S.updToast) {   // обновление только что применилось
+    box.hidden = false; box.classList.add('done');
+    $('#updTitle').textContent = 'Обновлено до версии ' + S.updToast;
+    $('#updText').textContent = 'Всё готово. Переустанавливать ничего не нужно.';
+    return updBtns(null, 'Ок');
+  }
+  if (run && UPD_STAGE[run.state]) {   // идёт обновление
+    box.hidden = false; $('#updProg').hidden = false;
+    $('#updTitle').textContent = 'Обновляю до версии ' + String(run.tag || '').replace(/^v/i, '');
+    $('#updText').textContent = UPD_STAGE[run.state] + ' Не закрывайте браузер.';
+    return updBtns(null, null);
+  }
+  if (run && run.state === 'error') {
+    box.hidden = false;
+    if (run.legacy) {   // у помощника ещё нет автообновления — один раз нужен установщик вручную
+      $('#updTitle').textContent = 'Один раз нужен новый установщик';
+      $('#updText').textContent = 'Скачайте и запустите Bogestv0-VPN-Setup.exe, затем перезапустите браузер. Дальше всё будет обновляться само.';
+      return updBtns('Скачать', 'Позже');
+    }
+    box.classList.add('bad');
+    $('#updTitle').textContent = 'Не удалось обновиться';
+    $('#updText').textContent = run.error || 'Попробуйте ещё раз.';
+    return updBtns('Повторить', 'Закрыть');
+  }
+  if (u && u.available) {
+    box.hidden = false;
+    $('#updTitle').textContent = 'Доступна версия ' + u.latest;
+    $('#updText').textContent = 'У вас ' + u.current + '. Поставится само, без переустановки.';
+    return updBtns('Обновить', 'Позже');
+  }
+  box.hidden = true;
+}
 async function loadUpdate(force) {
   const u = await send({ type: 'update', force: !!force });
   updInfo = u; $('#verText').textContent = 'v' + (u && u.current || '');
-  const box = $('#upd');
-  if (u && u.available) {
-    $('#updTitle').textContent = 'Доступна версия ' + u.latest;
-    $('#updText').textContent = 'У вас ' + u.current + '. Хотите обновить?';
-    box.hidden = false;
-  } else box.hidden = true;
+  renderUpd();
   return u;
 }
-$('#updGo').addEventListener('click', () => {
-  if (!updInfo || !/^https:\/\/(github\.com|objects\.githubusercontent\.com)\//.test(updInfo.url || '')) return;
-  chrome.tabs.create({ url: updInfo.url });
-  $('#updText').textContent = 'Запустите скачанный установщик, затем перезапустите браузер.';
+$('#updGo').addEventListener('click', async () => {
+  const run = S.updRun;
+  if (run && run.legacy) {
+    if (updInfo && /^https:\/\/(github\.com|objects\.githubusercontent\.com)\//.test(updInfo.url || '')) chrome.tabs.create({ url: updInfo.url });
+    return;
+  }
+  const tag = (updInfo && updInfo.tag) || (run && run.tag);
+  if (!tag) return;
+  S.updRun = { state: 'downloading', tag }; renderUpd();
+  await send({ type: 'updgo', tag });
 });
-$('#updSkip').addEventListener('click', async () => { if (updInfo) await send({ type: 'updskip', tag: updInfo.tag }); $('#upd').hidden = true; });
+$('#updSkip').addEventListener('click', async () => {
+  if (S.updToast || (S.updRun && S.updRun.state === 'error' && !S.updRun.legacy)) {
+    S.updToast = null; S.updRun = null; await send({ type: 'updclear' }); return renderUpd();
+  }
+  if (updInfo) await send({ type: 'updskip', tag: updInfo.tag });
+  if (S.updRun) { S.updRun = null; await send({ type: 'updclear' }); }
+  $('#upd').hidden = true;
+});
+chrome.storage.onChanged.addListener((ch) => {   // ход обновления приходит из фонового сервиса
+  if (ch.updRun) S.updRun = ch.updRun.newValue || null;
+  if (ch.updToast) S.updToast = ch.updToast.newValue || null;
+  if (ch.updRun || ch.updToast) renderUpd();
+});
 $('#updCheck').addEventListener('click', async () => {
   const b = $('#updCheck'); b.disabled = true; b.textContent = 'Проверяю…';
   const u = await loadUpdate(true);
@@ -253,9 +310,9 @@ async function checkHelper() {
   const r = await send({ type: 'ping' });
   h.classList.toggle('ok', !!(r && r.ok && r.xray));
   h.classList.toggle('bad', !(r && r.ok && r.xray));
-  if (!r || !r.ok) t.textContent = 'не установлен — запустите install из папки host';
-  else if (!r.xray) t.textContent = 'помощник есть, но xray не найден (' + (r.hint || 'положите xray в host/bin') + ')';
-  else t.textContent = 'готов · ' + r.xray;
+  if (!r || !r.ok) t.textContent = 'не установлен — запустите Bogestv0-VPN-Setup.exe';
+  else if (!r.xray) t.textContent = 'помощник есть, но xray не найден (' + (r.hint || 'переустановите Bogestv0 VPN') + ')';
+  else t.textContent = 'готов · ' + r.xray + (r.app ? ' · v' + r.app : '');
 }
 
 (async () => {
