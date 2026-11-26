@@ -27,13 +27,15 @@ async function checkUpdate(force) {
   let c = st.updCache;
   if (force || !c || Date.now() - c.at > 6 * 3600 * 1000) {   // не чаще раза в 6 часов
     try {
-      const r = await fetch('https://api.github.com/repos/' + GH_REPO + '/releases/latest', { headers: { Accept: 'application/vnd.github+json' }, cache: 'no-store' });
-      if (r.ok) {
-        const j = await r.json();
-        const asset = (j.assets || []).find((a) => /Setup\.exe$/i.test(a.name));
-        c = { at: Date.now(), tag: String(j.tag_name || ''), page: String(j.html_url || ''), asset: asset ? asset.browser_download_url : '' };
-        await setState({ updCache: c });
-      }
+      await withDirectHosts(async () => {
+        const r = await fetch('https://api.github.com/repos/' + GH_REPO + '/releases/latest', { headers: { Accept: 'application/vnd.github+json' }, cache: 'no-store' });
+        if (r.ok) {
+          const j = await r.json();
+          const asset = (j.assets || []).find((a) => /Setup\.exe$/i.test(a.name));
+          c = { at: Date.now(), tag: String(j.tag_name || ''), page: String(j.html_url || ''), asset: asset ? asset.browser_download_url : '' };
+          await setState({ updCache: c });
+        }
+      });
     } catch (e) { /* нет сети — просто без баннера */ }
   }
   if (!c || !c.tag) return { available: false, current: cur };
@@ -108,35 +110,72 @@ function deviceInfo() {
   const os = /Windows/.test(ua) ? 'Windows' : /Mac OS/.test(ua) ? 'macOS' : /Linux/.test(ua) ? 'Linux' : 'PC';
   return { model: 'Browser ' + br, os: os };   // только ASCII: это значения HTTP-заголовков
 }
+// Подписка и проверка обновлений должны идти мимо VPN-прокси: PAC шлёт даже их в SOCKS,
+// а если outbound — битый CF WS, запрос висит до тайм-аута. Пускаем только эти два хоста напрямую,
+// остальной трафик продолжает идти через VPN как раньше.
+async function withDirectHosts(fn) {
+  let saved = null;
+  try {
+    const cur = await chrome.proxy.settings.get({ incognito: false }).catch(() => null);
+    if (cur && cur.value && cur.value.mode !== 'direct') {
+      saved = cur.value;
+      const v = JSON.parse(JSON.stringify(cur.value));
+      if (v.mode === 'pac_script' && v.pacScript && v.pacScript.data) {
+        v.pacScript = Object.assign({}, v.pacScript, {
+          data: v.pacScript.data.replace('function FindProxyForURL(url, host) {',
+            "function FindProxyForURL(url, host) {\n  if (host === 'notify.bogestv0.ru' || host === 'api.github.com') return 'DIRECT';")
+        });
+        await chrome.proxy.settings.set({ value: v, scope: 'regular' });
+      } else {
+        await chrome.proxy.settings.clear({ scope: 'regular' });
+      }
+    }
+  } catch (_) {}
+  try { return await fn(); }
+  finally {
+    if (saved) { try { await chrome.proxy.settings.set({ value: saved, scope: 'regular' }); } catch (_) {} }
+  }
+}
+
 // Загрузить подписку и вернуть ВСЕ разобранные vless-профили. Бросает Error с понятным текстом.
 // Раньше брался только первый ключ (у нас это был CF WS) — поэтому выбрать rezerv/Reality было нельзя.
 async function fetchSub(url) {
   const di = deviceInfo();
-  const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), 10000);   // без тайм-аута подключение могло висеть бесконечно
-  const opts = { cache: 'no-store', signal: ctl.signal,
-    headers: { 'x-hwid': await getHwid(), 'x-device-os': di.os, 'x-device-model': di.model } };
-  let r = null, savedProxy = null;
-  try {
-    try { r = await fetch(url, opts); }
+  const headers = { 'x-hwid': await getHwid(), 'x-device-os': di.os, 'x-device-model': di.model };
+  // У КАЖДОЙ попытки свой AbortController: после тайм-аута первой signal уже мёртв,
+  // и повтор на нём обрывается мгновенно (из-за этого в 1.3.5 всегда показывался тайм-аут).
+  const attempt = async () => {
+    const ctl = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; ctl.abort(); }, 15000);
+    try {
+      return await fetch(url, { cache: 'no-store', signal: ctl.signal, headers });
+    } catch (e) {
+      e.vpnTimedOut = timedOut;
+      throw e;
+    } finally { clearTimeout(timer); }
+  };
+  let r = null, lastErr = null;
+  await withDirectHosts(async () => {
+    try { r = await attempt(); }
     catch (e) {
-      // PAC оставляет прокси включённым даже когда xray уже не-running: запрос уходит в никуда.
-      // Повторяем один раз напрямую, затем возвращаем настройки прокси как было.
-      savedProxy = await chrome.proxy.settings.get({ incognito: false }).catch(() => null);
-      if (savedProxy && savedProxy.value && savedProxy.value.mode !== 'direct') {
+      lastErr = e;
+      // Если пропатченный PAC не помог — снимаем прокси полностью и повторяем один раз.
+      const cur = await chrome.proxy.settings.get({ incognito: false }).catch(() => null);
+      if (cur && cur.value && cur.value.mode !== 'direct') {
         try {
           await chrome.proxy.settings.clear({ scope: 'regular' });
-          r = await fetch(url, opts);
-        } catch (_) { /* покажем исходную ошибку */ }
+          await new Promise((ok) => setTimeout(ok, 300));
+          r = await attempt();
+          lastErr = null;
+        } catch (e2) { lastErr = e2; }
       }
     }
-  } finally { clearTimeout(timer); }
+  });
   if (!r) {
-    const timeout = !!ctl.signal.aborted;
-    throw new Error('Не удалось загрузить подписку: ' + (timeout ? 'тайм-аут 10 с.' : 'нет связи с сервером.') + ' Если сайт не открывается без VPN — возьмите запасную ссылку в боте (/myvpn) или нажмите «Исправить DNS» в настройках.');
-  }
-  if (savedProxy && savedProxy.value) {
-    try { await chrome.proxy.settings.set({ value: savedProxy.value, scope: 'regular' }); } catch (_) {}
+    const timeout = !!(lastErr && lastErr.vpnTimedOut);
+    const detail = lastErr && lastErr.message ? ' (' + String(lastErr.message).slice(0, 120) + ')' : '';
+    throw new Error('Не удалось загрузить подписку: ' + (timeout ? 'тайм-аут 15 с.' : 'нет связи с сервером.') + detail + ' Если сайт не открывается без VPN — возьмите запасную ссылку в боте (/myvpn) или нажмите «Исправить DNS» в настройках.');
   }
   const text = (await r.text()).trim();
   if (!r.ok) throw new Error(text.slice(0, 200) || ('Ошибка подписки (' + r.status + ')'));
