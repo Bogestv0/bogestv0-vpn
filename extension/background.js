@@ -204,6 +204,9 @@ async function syncSub(url, profiles) {
 }
 async function addSub(url) {
   url = String(url || '').trim();
+  // Бот может прислать /vpn/c/… — это страница ключа, а не подписка. Внутри неё та же
+  // ссылка /vpn/s/… с тем же токеном, поэтому просто приводим к виду подписки.
+  url = url.replace(/\/vpn\/c\//i, '/vpn/s/');
   if (!SUB_RE.test(url)) return { ok: false, error: 'Это не ссылка-подписка Bogestv0 VPN.' };
   let profiles;
   try { profiles = await syncSub(url, (await getState()).profiles); } catch (e) { return { ok: false, error: e.message }; }
