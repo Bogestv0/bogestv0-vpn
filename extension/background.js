@@ -108,32 +108,53 @@ function deviceInfo() {
   const os = /Windows/.test(ua) ? 'Windows' : /Mac OS/.test(ua) ? 'macOS' : /Linux/.test(ua) ? 'Linux' : 'PC';
   return { model: 'Browser ' + br, os: os };   // только ASCII: это значения HTTP-заголовков
 }
-// Загрузить подписку и вернуть разобранный vless-профиль. Бросает Error с понятным текстом.
+// Загрузить подписку и вернуть ВСЕ разобранные vless-профили. Бросает Error с понятным текстом.
+// Раньше брался только первый ключ (у нас это был CF WS) — поэтому выбрать rezerv/Reality было нельзя.
 async function fetchSub(url) {
   const di = deviceInfo();
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 10000);   // без тайм-аута подключение могло висеть бесконечно
   let r;
   try {
-    r = await fetch(url, { cache: 'no-store', headers: { 'x-hwid': await getHwid(), 'x-device-os': di.os, 'x-device-model': di.model } });
-  } catch (e) { throw new Error('Не удалось загрузить подписку: нет связи с сервером. Если сайт не открывается без VPN — возьмите запасную ссылку в боте (/myvpn) или нажмите «Исправить DNS» в настройках.'); }
+    r = await fetch(url, { cache: 'no-store', signal: ctl.signal, headers: { 'x-hwid': await getHwid(), 'x-device-os': di.os, 'x-device-model': di.model } });
+  } catch (e) {
+    const timeout = !!ctl.signal.aborted;
+    throw new Error('Не удалось загрузить подписку: ' + (timeout ? 'тайм-аут 10 с.' : 'нет связи с сервером.') + ' Если сайт не открывается без VPN — возьмите запасную ссылку в боте (/myvpn) или нажмите «Исправить DNS» в настройках.');
+  } finally { clearTimeout(timer); }
   const text = (await r.text()).trim();
   if (!r.ok) throw new Error(text.slice(0, 200) || ('Ошибка подписки (' + r.status + ')'));
   let body = '';
   try { body = atob(text); } catch (e) { body = text; }
-  const line = body.split(/\r?\n/).map((x) => x.trim()).find((x) => /^vless:\/\//i.test(x));
-  if (!line) throw new Error('В подписке нет ключа vless://');
-  return Vless.parseVless(line);
+  const lines = body.split(/\r?\n/).map((x) => x.trim()).filter((x) => /^vless:\/\//i.test(x));
+  if (!lines.length) throw new Error('В подписке нет ключа vless://');
+  const parsed = lines.map(Vless.parseVless);
+  const rank = (p) => p.security === 'reality' ? 0 : (p.network === 'ws' ? 1 : 2);   // прямой Reality первым, CF — запасной
+  parsed.sort((a, b) => rank(a) - rank(b));
+  return parsed;
+}
+const sameServer = (a, b) => a.sub === b.sub && a.parsed.host === b.parsed.host && a.parsed.port === b.parsed.port &&
+  a.parsed.security === b.parsed.security && a.parsed.network === b.parsed.network;
+
+// Перечитать подписку и обновить все её профили, сохраняя выбранный сервер и ID.
+async function syncSub(url, profiles) {
+  const fresh = await fetchSub(url);
+  const mine = profiles.filter((p) => p.sub === url);
+  const out = profiles.filter((p) => p.sub !== url);
+  for (const f of fresh) {
+    const old = mine.find((p) => sameServer(p, { sub: url, parsed: f }));
+    out.push(old ? Object.assign({}, old, { parsed: f }) : { id: crypto.randomUUID(), parsed: f, sub: url });
+  }
+  return out;
 }
 async function addSub(url) {
   url = String(url || '').trim();
   if (!SUB_RE.test(url)) return { ok: false, error: 'Это не ссылка-подписка Bogestv0 VPN.' };
-  let parsed;
-  try { parsed = await fetchSub(url); } catch (e) { return { ok: false, error: e.message }; }
-  const st = await getState();
-  const have = st.profiles.find((p) => p.sub === url);
-  const profiles = have ? st.profiles.map((p) => (p === have ? Object.assign({}, p, { parsed }) : p)) : st.profiles.concat({ id: crypto.randomUUID(), parsed, sub: url });
-  const id = have ? have.id : profiles[profiles.length - 1].id;
+  let profiles;
+  try { profiles = await syncSub(url, (await getState()).profiles); } catch (e) { return { ok: false, error: e.message }; }
+  const mine = profiles.filter((p) => p.sub === url);
+  const id = (mine.find((p) => p.parsed.security === 'reality') || mine[0]).id;
   await setState({ profiles, activeId: id });
-  return { ok: true };
+  return { ok: true, count: mine.length };
 }
 
 const getState = async () => Object.assign({}, DEFAULTS, await chrome.storage.local.get(null));
@@ -176,16 +197,20 @@ function badge(on) {
 
 async function connect(id) {
   const st = await getState();
-  const profile = st.profiles.find((p) => p.id === (id || st.activeId));
+  let profile = st.profiles.find((p) => p.id === (id || st.activeId));
   if (!profile) return { ok: false, error: 'Сначала добавьте ссылку на вкладке «Серверы»' };
   if (profile.sub) {   // обновляем ключ из подписки: так работают перевыпуск ключа, «Отвязать» и лимит устройств
     try {
-      profile.parsed = await fetchSub(profile.sub);
-      await setState({ profiles: st.profiles.map((p) => (p.id === profile.id ? profile : p)) });
+      const profiles = await syncSub(profile.sub, st.profiles);
+      await setState({ profiles });
+      const fresh = profiles.find((p) => p.id === profile.id);
+      if (fresh) profile.parsed = fresh.parsed;
+      else profile = profiles.find((p) => p.sub === profile.sub);   // сервер пропал из подписки — берём первый доступный
     } catch (e) {
-      if (!/нет связи/.test(e.message)) return { ok: false, error: e.message };   // отказ сервера — показываем причину; нет сети — пробуем сохранённый ключ
+      if (!/нет связи|тайм-аут/.test(e.message)) return { ok: false, error: e.message };   // отказ сервера — показываем причину; нет сети — пробуем сохранённый ключ
     }
   }
+  if (!profile) return { ok: false, error: 'В подписке нет доступных серверов' };
   const r = await native({ cmd: 'start', profile: profile.parsed, port: st.port });
   if (!r.ok) return r;
   await applyProxy(st);
