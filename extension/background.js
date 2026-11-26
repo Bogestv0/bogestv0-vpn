@@ -114,13 +114,30 @@ async function fetchSub(url) {
   const di = deviceInfo();
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 10000);   // без тайм-аута подключение могло висеть бесконечно
-  let r;
+  const opts = { cache: 'no-store', signal: ctl.signal,
+    headers: { 'x-hwid': await getHwid(), 'x-device-os': di.os, 'x-device-model': di.model } };
+  let r = null, savedProxy = null;
   try {
-    r = await fetch(url, { cache: 'no-store', signal: ctl.signal, headers: { 'x-hwid': await getHwid(), 'x-device-os': di.os, 'x-device-model': di.model } });
-  } catch (e) {
+    try { r = await fetch(url, opts); }
+    catch (e) {
+      // PAC оставляет прокси включённым даже когда xray уже не-running: запрос уходит в никуда.
+      // Повторяем один раз напрямую, затем возвращаем настройки прокси как было.
+      savedProxy = await chrome.proxy.settings.get({ incognito: false }).catch(() => null);
+      if (savedProxy && savedProxy.value && savedProxy.value.mode !== 'direct') {
+        try {
+          await chrome.proxy.settings.clear({ scope: 'regular' });
+          r = await fetch(url, opts);
+        } catch (_) { /* покажем исходную ошибку */ }
+      }
+    }
+  } finally { clearTimeout(timer); }
+  if (!r) {
     const timeout = !!ctl.signal.aborted;
     throw new Error('Не удалось загрузить подписку: ' + (timeout ? 'тайм-аут 10 с.' : 'нет связи с сервером.') + ' Если сайт не открывается без VPN — возьмите запасную ссылку в боте (/myvpn) или нажмите «Исправить DNS» в настройках.');
-  } finally { clearTimeout(timer); }
+  }
+  if (savedProxy && savedProxy.value) {
+    try { await chrome.proxy.settings.set({ value: savedProxy.value, scope: 'regular' }); } catch (_) {}
+  }
   const text = (await r.text()).trim();
   if (!r.ok) throw new Error(text.slice(0, 200) || ('Ошибка подписки (' + r.status + ')'));
   let body = '';
@@ -230,7 +247,7 @@ async function disconnect() {
 // Сверяем сохранённое состояние с реальностью (xray мог быть остановлен)
 async function sync() {
   const st = await getState();
-  if (!st.connected) { badge(false); return st; }
+  if (!st.connected) { await clearProxy(); badge(false); return st; }   // на всякий случай снимаем остаточный старый PAC
   const r = await native({ cmd: 'status' });
   if (!r.ok || !r.running) {
     await clearProxy();

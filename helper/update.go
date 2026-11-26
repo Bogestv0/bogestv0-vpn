@@ -25,9 +25,9 @@ import (
 const setupAsset = "Bogestv0-VPN-Setup.exe"
 
 var (
-	// подставляются при сборке: -X main.ghRepo=владелец/репозиторий -X main.appVersion=1.3.4
+	// подставляются при сборке: -X main.ghRepo=владелец/репозиторий -X main.appVersion=1.3.5
 	ghRepo     = "bogestv0/bogestv0-vpn"
-	appVersion = "1.3.4"
+	appVersion = "1.3.5"
 	// меняется только в тестах
 	releaseBase = "https://github.com"
 

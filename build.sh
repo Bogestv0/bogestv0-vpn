@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Bogestv0 VPN © 2026 Bogestv0 (https://t.me/bogestv0)
 # Сборка Bogestv0-VPN-Setup.exe (нужен Go 1.21+).
-#   VERSION=1.3.4        номер версии (в релизе берётся из тега v1.3.4); попадает в manifest.json, помощника и установщик
+#   VERSION=1.3.5        номер версии (в релизе берётся из тега v1.3.5); попадает в manifest.json, помощника и установщик
 #   REPO=владелец/репо   откуда помощник берёт обновления (по умолчанию bogestv0/bogestv0-vpn)
 #   STORE_IDS="id1,id2"  ID из Chrome Web Store / Edge Add-ons (необязательно)
 set -e
 cd "$(dirname "$0")"
-VERSION="${VERSION:-1.3.4}"
+VERSION="${VERSION:-1.3.5}"
 VERSION="${VERSION#v}"   # тег приходит как v1.3.4, манифесту нужен 1.3.4
 REPO="${REPO:-bogestv0/bogestv0-vpn}"
 rm -rf installer/assets && mkdir -p installer/assets
